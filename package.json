@@ -1,7 +1,6 @@
 {
   "name": "markgram",
   "version": "1.0.0",
-  "description": "Messenger",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
