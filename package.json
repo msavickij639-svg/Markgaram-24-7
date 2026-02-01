@@ -1,6 +1,7 @@
 {
   "name": "markgram",
   "version": "1.0.0",
+  "description": "Super Light Markgram",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
