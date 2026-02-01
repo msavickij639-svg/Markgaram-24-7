@@ -3,7 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); // Использование легкой версии для Railway
 const path = require('path');
 
 const app = express();
@@ -22,7 +22,7 @@ let db;
         CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, user TEXT UNIQUE, pass TEXT);
         CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, text TEXT, type TEXT);
     `);
-    console.log("База Markgram запущена!");
+    console.log("База Markgram готова!");
 })();
 
 app.use(express.static(__dirname));
@@ -66,4 +66,4 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => console.log('Сервер летит на порту ' + PORT));
+server.listen(PORT, () => console.log('Сервер запущен на порту ' + PORT));
