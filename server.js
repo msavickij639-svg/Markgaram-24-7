@@ -1,53 +1,76 @@
 const express = require('express');
+const http = require('http');
 const { Server } = require('socket.io');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+const bcrypt = require('bcryptjs'); 
 const path = require('path');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
 const PORT = process.env.PORT || 3000;
 
-// Хранилище в памяти
-let users = {}; 
-let messages = [];
+let db;
+(async () => {
+    try {
+        // База данных будет создаваться в папке /tmp, чтобы Railway не ругался на права доступа
+        const dbPath = path.join('/tmp', 'markgram.db');
+        db = await open({ 
+            filename: dbPath, 
+            driver: sqlite3.Database 
+        });
+        
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, user TEXT UNIQUE, pass TEXT);
+            CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, text TEXT, type TEXT);
+        `);
+        console.log("БАЗА ДАННЫХ ВОССТАНОВЛЕНА И ГОТОВА");
+    } catch (err) {
+        console.error("ОШИБКА БАЗЫ:", err);
+    }
+})();
 
 app.use(express.static(__dirname));
 app.use(express.json());
 
-// Главная страница
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+app.post('/register', async (req, res) => {
+    try {
+        const { user, pass } = req.body;
+        const hash = await bcrypt.hash(pass, 10);
+        await db.run('INSERT INTO users (user, pass) VALUES (?, ?)', [user, hash]);
+        res.json({ ok: true });
+    } catch (e) { res.json({ ok: false, msg: "Логин занят" }); }
 });
 
-// Проверка для Railway (Health Check)
-app.get('/health', (req, res) => res.send('OK'));
-
-app.post('/register', (req, res) => {
+app.post('/login', async (req, res) => {
     const { user, pass } = req.body;
-    users[user] = pass;
-    res.json({ ok: true });
+    const userData = await db.get('SELECT * FROM users WHERE user = ?', [user]);
+    if (userData && await bcrypt.compare(pass, userData.pass)) {
+        res.json({ ok: true });
+    } else { res.json({ ok: false, msg: "Ошибка входа" }); }
 });
 
-app.post('/login', (req, res) => {
-    const { user, pass } = req.body;
-    if (users[user] === pass) res.json({ ok: true });
-    else res.json({ ok: false });
+app.get('/history', async (req, res) => {
+    const { target, me } = req.query;
+    const rows = await db.all(`
+        SELECT * FROM messages WHERE (sender = ? AND receiver = ? AND type = 'private') 
+        OR (sender = ? AND receiver = ? AND type = 'private') 
+        OR (receiver = ? AND type = 'channel') ORDER BY id ASC
+    `, [me, target, target, me, target]);
+    res.json(rows);
 });
-
-app.get('/history', (req, res) => {
-    res.json(messages.slice(-50));
-});
-
-// Запускаем сервер
-const expressServer = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`MARKGRAM ONLINE: http://0.0.0.0:${PORT}`);
-});
-
-// Подключаем Socket.io к запущенному серверу
-const io = new Server(expressServer);
 
 io.on('connection', (socket) => {
-    socket.on('join', (u) => socket.join(u));
-    socket.on('send-msg', (d) => {
-        messages.push(d);
-        io.emit('new-msg', d);
+    socket.on('join', (user) => { socket.join(user); });
+    socket.on('send-msg', async (data) => {
+        await db.run('INSERT INTO messages (sender, receiver, text, type) VALUES (?,?,?,?)', 
+            [data.from, data.to, data.msg, data.type]);
+        io.to(data.to).to(data.from).emit('new-msg', data);
     });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`СЕРВЕР ЗАПУЩЕН НА ПОРТУ ${PORT}`);
 });
