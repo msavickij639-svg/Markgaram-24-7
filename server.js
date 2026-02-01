@@ -9,42 +9,42 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 
-// Временное хранилище (пока сервер работает)
+// Храним данные прямо в коде, чтобы не мучить сервер базой данных
 let users = {}; 
 let messages = [];
 
 app.use(express.static(__dirname));
 app.use(express.json());
 
-// Простая регистрация без сложных баз
 app.post('/register', (req, res) => {
     const { user, pass } = req.body;
-    users[user] = pass;
+    if (!user || !pass) return res.json({ ok: false });
+    users[user] = pass; // Сохраняем пользователя
     res.json({ ok: true });
 });
 
 app.post('/login', (req, res) => {
     const { user, pass } = req.body;
-    if (users[user] === pass) {
+    if (users[user] && users[user] === pass) {
         res.json({ ok: true });
     } else {
-        res.json({ ok: false, msg: "Ошибка" });
+        res.json({ ok: false, msg: "Ошибка входа" });
     }
 });
 
 app.get('/history', (req, res) => {
-    res.json(messages.slice(-50)); // Отдаем последние 50 сообщений
+    res.json(messages.slice(-50)); // Показываем последние 50 сообщений
 });
 
 io.on('connection', (socket) => {
     socket.on('join', (u) => socket.join(u));
     socket.on('send-msg', (d) => {
-        messages.push(d);
+        messages.push(d); // Сохраняем в список
         io.emit('new-msg', d);
     });
 });
 
-// Слушаем на 0.0.0.0 — это критически важно для Railway!
+// Слушаем на 0.0.0.0
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`MARKGRAM IS READY ON PORT ${PORT}`);
+    console.log(`SERVER RUNNING ON PORT ${PORT}`);
 });
