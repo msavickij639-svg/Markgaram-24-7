@@ -7,20 +7,24 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Railway ВСЕГДА дает порт через process.env.PORT
 const PORT = process.env.PORT || 3000;
 
-// Временное хранилище (пока сервер работает)
 let users = {}; 
 let messages = [];
 
 app.use(express.static(__dirname));
 app.use(express.json());
 
+// ВАЖНО: Специальный маршрут, чтобы Railway видел, что сервер работает
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
 app.post('/register', (req, res) => {
     const { user, pass } = req.body;
     if (!user || !pass) return res.json({ ok: false });
     users[user] = pass;
-    console.log('Зарегистрирован юзер:', user);
     res.json({ ok: true });
 });
 
@@ -29,7 +33,7 @@ app.post('/login', (req, res) => {
     if (users[user] === pass) {
         res.json({ ok: true });
     } else {
-        res.json({ ok: false, msg: "Ошибка" });
+        res.json({ ok: false });
     }
 });
 
@@ -45,7 +49,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Запуск на 0.0.0.0 обязателен для Railway!
+// Слушаем на 0.0.0.0 — без этого Railway не пропустит трафик
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`MARKGRAM IS LIVE ON PORT ${PORT}`);
+    console.log(`=== SERVER STARTED ===`);
+    console.log(`PORT: ${PORT}`);
+    console.log(`DOMAIN: ${process.env.RAILWAY_STATIC_URL || 'localhost'}`);
 });
