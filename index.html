@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Markgram Ultra 2.0</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { display: flex; height: 100vh; margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: #abbdca; }
+        #auth { position: fixed; inset: 0; background: #2481cc; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        .auth-card { background: white; padding: 30px; border-radius: 15px; color: #333; display: flex; flex-direction: column; gap: 10px; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .sidebar { width: 300px; background: white; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
+        .chat-main { flex: 1; display: flex; flex-direction: column; }
+        #msg-box { flex: 1; padding: 20px; overflow-y: auto; background: #8fb1e9; display: flex; flex-direction: column; gap: 10px; }
+        .msg { background: white; padding: 10px; border-radius: 12px; max-width: 80%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .msg.my { align-self: flex-end; background: #effdde; }
+        .input-area { padding: 15px; background: white; display: flex; gap: 10px; }
+        input, button, select { padding: 12px; border-radius: 8px; border: 1px solid #ddd; outline: none; }
+        .btn-call { background: #4caf50; color: white; cursor: pointer; border: none; font-weight: bold; width: 100%; }
+        .btn-send { background: #2481cc; color: white; border: none; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="auth">
+    <h1>MARKGRAM</h1>
+    <div class="auth-card">
+        <input id="u-login" placeholder="Логин">
+        <input id="u-pass" type="password" placeholder="Пароль">
+        <button onclick="auth('login')" style="background:#2481cc; color:white">Войти</button>
+        <button onclick="auth('register')">Создать аккаунт</button>
+    </div>
+</div>
+
+<div class="sidebar">
+    <div style="padding: 20px; background: #2481cc; color: white; font-weight: bold;">Настройки чата</div>
+    <div style="padding: 15px;">
+        <label>Собеседник / Канал:</label>
+        <input id="target" style="width: 100%; margin: 8px 0;" placeholder="Введите имя..." onchange="loadHistory()">
+        <select id="msg-type" style="width: 100%; margin-bottom: 10px;">
+            <option value="private">Личный чат</option>
+            <option value="channel">Канал (всем)</option>
+        </select>
+        <button class="btn-call" onclick="makeCall()">📞 Голосовой звонок</button>
+    </div>
+    <div id="info" style="margin-top:auto; padding: 15px; font-size: 12px; color: #777;"></div>
+</div>
+
+<div class="chat-main">
+    <div id="msg-box"></div>
+    <div class="input-area">
+        <input id="m-text" style="flex: 1" placeholder="Ваше сообщение...">
+        <button class="btn-send" onclick="send()">ОТПРАВИТЬ</button>
+    </div>
+</div>
+
+<audio id="remoteAudio" autoplay></audio>
+
+<script>
+    const socket = io();
+    let me = "";
+    let peer;
+
+    async function auth(type) {
+        me = document.getElementById('u-login').value;
+        const pass = document.getElementById('u-pass').value;
+        if(!me || !pass) return alert("Заполни поля!");
+
+        const res = await fetch('/' + type, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user: me, pass})
+        });
+        const data = await res.json();
+        if(data.ok) {
+            document.getElementById('auth').style.display = 'none';
+            document.getElementById('info').innerText = "Вы в сети как: " + me;
+            socket.emit('join', me);
+            initPeer();
+        } else { alert(data.msg); }
+    }
+
+    async function loadHistory() {
+        const target = document.getElementById('target').value;
+        if(!target || !me) return;
+        
+        // encodeURIComponent позволяет использовать пробелы в именах (Марк 2.0)
+        const url = `/history?target=${encodeURIComponent(target)}&me=${encodeURIComponent(me)}`;
+        const res = await fetch(url);
+        const history = await res.json();
+        
+        document.getElementById('msg-box').innerHTML = '';
+        history.forEach(appendMsg);
+    }
+
+    function send() {
+        const to = document.getElementById('target').value;
+        const text = document.getElementById('m-text').value;
+        const type = document.getElementById('msg-type').value;
+        if(!to || !text) return alert("Укажите кому и что писать!");
+        
+        socket.emit('send-msg', { from: me, to, msg: text, type });
+        document.getElementById('m-text').value = "";
+    }
+
+    function appendMsg(data) {
+        const box = document.getElementById('msg-box');
+        const div = document.createElement('div');
+        div.className = "msg " + (data.sender === me ? "my" : "");
+        div.innerHTML = `<small style="color:#888; font-size:10px">${data.sender}</small><div>${data.text || data.msg}</div>`;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    socket.on('new-msg', appendMsg);
+
+    // ЛОГИКА ЗВОНКОВ
+    function initPeer() {
+        peer = new Peer(me);
+        peer.on('call', async call => {
+            if(confirm("Вам звонит " + call.peer + ". Ответить?")) {
+                const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+                call.answer(stream);
+                call.on('stream', s => document.getElementById('remoteAudio').srcObject = s);
+            }
+        });
+    }
+
+    async function makeCall() {
+        const to = document.getElementById('target').value;
+        if(!to) return alert("Кому звоним?");
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            const call = peer.call(to, stream);
+            call.on('stream', s => document.getElementById('remoteAudio').srcObject = s);
+        } catch(e) { alert("Микрофон недоступен! Проверьте разрешения в браузере."); }
+    }
+</script>
+</body>
+</html>
