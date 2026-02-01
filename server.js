@@ -7,10 +7,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Railway сам подставит нужный порт
 const PORT = process.env.PORT || 3000;
 
-// Временное хранилище (сообщения будут стерты при перезагрузке сервера)
+// Временное хранилище (пока сервер работает)
 let users = {}; 
 let messages = [];
 
@@ -21,7 +20,7 @@ app.post('/register', (req, res) => {
     const { user, pass } = req.body;
     if (!user || !pass) return res.json({ ok: false });
     users[user] = pass;
-    console.log(`Новый юзер: ${user}`);
+    console.log('Зарегистрирован юзер:', user);
     res.json({ ok: true });
 });
 
@@ -30,7 +29,7 @@ app.post('/login', (req, res) => {
     if (users[user] === pass) {
         res.json({ ok: true });
     } else {
-        res.json({ ok: false, msg: "Ошибка входа" });
+        res.json({ ok: false, msg: "Ошибка" });
     }
 });
 
@@ -46,7 +45,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Слушаем на 0.0.0.0 (это исправит ошибку "failed to respond")
+// Запуск на 0.0.0.0 обязателен для Railway!
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`MARKGRAM OK! Порт: ${PORT}`);
+    console.log(`MARKGRAM IS LIVE ON PORT ${PORT}`);
 });
