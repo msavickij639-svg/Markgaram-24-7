@@ -10,15 +10,15 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Railway передает порт через переменную среды
 const PORT = process.env.PORT || 3000;
 
 let db;
 (async () => {
     try {
-        // База данных будет создаваться в папке /tmp, чтобы Railway не ругался на права доступа
-        const dbPath = path.join('/tmp', 'markgram.db');
+        // Создаем базу данных в текущей папке
         db = await open({ 
-            filename: dbPath, 
+            filename: path.join(__dirname, 'markgram.db'), 
             driver: sqlite3.Database 
         });
         
@@ -26,9 +26,9 @@ let db;
             CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, user TEXT UNIQUE, pass TEXT);
             CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, text TEXT, type TEXT);
         `);
-        console.log("БАЗА ДАННЫХ ВОССТАНОВЛЕНА И ГОТОВА");
-    } catch (err) {
-        console.error("ОШИБКА БАЗЫ:", err);
+        console.log("Database connected.");
+    } catch (e) {
+        console.log("DB Error: " + e);
     }
 })();
 
@@ -41,7 +41,7 @@ app.post('/register', async (req, res) => {
         const hash = await bcrypt.hash(pass, 10);
         await db.run('INSERT INTO users (user, pass) VALUES (?, ?)', [user, hash]);
         res.json({ ok: true });
-    } catch (e) { res.json({ ok: false, msg: "Логин занят" }); }
+    } catch (e) { res.json({ ok: false, msg: "User exists" }); }
 });
 
 app.post('/login', async (req, res) => {
@@ -49,7 +49,7 @@ app.post('/login', async (req, res) => {
     const userData = await db.get('SELECT * FROM users WHERE user = ?', [user]);
     if (userData && await bcrypt.compare(pass, userData.pass)) {
         res.json({ ok: true });
-    } else { res.json({ ok: false, msg: "Ошибка входа" }); }
+    } else { res.json({ ok: false }); }
 });
 
 app.get('/history', async (req, res) => {
@@ -71,6 +71,7 @@ io.on('connection', (socket) => {
     });
 });
 
+// Критически важно для Railway: слушаем на 0.0.0.0
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`СЕРВЕР ЗАПУЩЕН НА ПОРТУ ${PORT}`);
+    console.log(`Server started on port ${PORT}`);
 });
