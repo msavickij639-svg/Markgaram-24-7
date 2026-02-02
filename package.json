@@ -1,18 +1,12 @@
 {
-  "name": "markgram",
+  "name": "markgram-server",
   "version": "1.0.0",
+  "description": "Чат сервер без бабаек",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "sqlite3": "^5.1.6",
-    "sqlite": "^5.0.1",
-    "bcryptjs": "^2.4.3"
-  },
-  "engines": {
-    "node": "18.x"
+    "ws": "^8.13.0"
   }
-}
+}v
