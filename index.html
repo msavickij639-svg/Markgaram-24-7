@@ -2,141 +2,68 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Markgram Ultra</title>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+    <title>MarkGram Live</title>
     <style>
-        * { box-sizing: border-box; }
-        body { display: flex; height: 100vh; margin: 0; font-family: 'Segoe UI', sans-serif; background: #abbdca; }
-        #auth { position: fixed; inset: 0; background: #2481cc; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
-        .auth-card { background: white; padding: 30px; border-radius: 15px; color: #333; display: flex; flex-direction: column; gap: 10px; width: 320px; }
-        .sidebar { width: 300px; background: white; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
-        .chat-main { flex: 1; display: flex; flex-direction: column; }
-        #msg-box { flex: 1; padding: 20px; overflow-y: auto; background: #8fb1e9; display: flex; flex-direction: column; gap: 10px; }
-        .msg { background: white; padding: 10px; border-radius: 12px; max-width: 80%; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .msg.my { align-self: flex-end; background: #effdde; }
-        .input-area { padding: 15px; background: white; display: flex; gap: 10px; }
-        input, button, select { padding: 12px; border-radius: 8px; border: 1px solid #ddd; outline: none; }
-        .btn-call { background: #4caf50; color: white; cursor: pointer; border: none; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-send { background: #2481cc; color: white; border: none; font-weight: bold; cursor: pointer; }
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; justify-content: center; padding-top: 50px; }
+        .container { width: 400px; background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #chat { display: none; }
+        input { width: 80%; padding: 10px; margin: 5px 0; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        #messages { height: 300px; overflow-y: auto; background: #2a2a2a; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .msg { margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
     </style>
 </head>
 <body>
 
-<div id="auth">
-    <h1>MARKGRAM</h1>
-    <div class="auth-card">
-        <input id="u-login" placeholder="Логин">
-        <input id="u-pass" type="password" placeholder="Пароль">
-        <button onclick="auth('login')" style="background:#2481cc; color:white">Войти</button>
-        <button onclick="auth('register')">Регистрация</button>
+<div class="container">
+    <div id="login">
+        <h2>Вход в MarkGram</h2>
+        <input type="text" id="username" placeholder="Твой ник">
+        <button onclick="connect()">Войти</button>
+    </div>
+
+    <div id="chat">
+        <h3 id="userLabel"></h3>
+        <div id="messages"></div>
+        <input type="text" id="msgInput" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') send()">
+        <button onclick="send()">📤</button>
     </div>
 </div>
-
-<div class="sidebar">
-    <div style="padding: 20px; background: #2481cc; color: white; font-weight: bold;">MARKGRAM</div>
-    <div style="padding: 15px;">
-        <label>Кому:</label>
-        <input id="target" style="width: 100%; margin-top:5px;" placeholder="Имя друга..." onchange="loadHistory()">
-        <select id="msg-type" style="width: 100%; margin-top: 10px;">
-            <option value="private">Личный чат</option>
-            <option value="channel">Общий канал</option>
-        </select>
-        <button class="btn-call" onclick="makeCall()">📞 Позвонить</button>
-    </div>
-    <div id="info" style="margin-top:auto; padding: 15px; font-size: 12px; color: #777;"></div>
-</div>
-
-<div class="chat-main">
-    <div id="msg-box"></div>
-    <div class="input-area">
-        <button onclick="alert('Нажми Win + . (точка) для выбора эмодзи!')">😊</button>
-        <input id="m-text" style="flex: 1" placeholder="Ваше сообщение...">
-        <button class="btn-send" onclick="send()">ОТПРАВИТЬ</button>
-    </div>
-</div>
-
-<audio id="notifSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3" preload="auto"></audio>
-<audio id="remoteAudio" autoplay></audio>
 
 <script>
-    const socket = io();
-    let me = "";
-    let peer;
+    let ws;
+    let myName = "";
 
-    async function auth(type) {
-        me = document.getElementById('u-login').value;
-        const pass = document.getElementById('u-pass').value;
-        if(!me || !pass) return;
-        const res = await fetch('/' + type, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({user: me, pass})
-        });
-        const data = await res.json();
-        if(data.ok) {
-            document.getElementById('auth').style.display = 'none';
-            document.getElementById('info').innerText = "В сети: " + me;
-            socket.emit('join', me);
-            initPeer();
-        } else { alert(data.msg); }
-    }
+    function connect() {
+        myName = document.getElementById('username').value;
+        if (!myName) return;
 
-    async function loadHistory() {
-        const target = document.getElementById('target').value;
-        if(!target || !me) return;
-        const url = `/history?target=${encodeURIComponent(target)}&me=${encodeURIComponent(me)}`;
-        const res = await fetch(url);
-        const history = await res.json();
-        const box = document.getElementById('msg-box');
-        box.innerHTML = '';
-        history.forEach(appendMsg);
+        // ЗАМЕНИ НА СВОЮ ССЫЛКУ ОТ RAILWAY (например: ws://твой-проект.railway.app)
+        ws = new WebSocket('ws://localhost:8080'); 
+
+        ws.onopen = () => {
+            document.getElementById('login').style.display = 'none';
+            document.getElementById('chat').style.display = 'block';
+            document.getElementById('userLabel').innerText = "Ник: " + myName;
+        };
+
+        ws.onmessage = (event) => {
+            const packet = JSON.parse(event.data);
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'msg';
+            msgDiv.innerHTML = `<b>${packet.name}:</b> ${packet.text}`;
+            document.getElementById('messages').appendChild(msgDiv);
+            document.getElementById('messages').scrollTop = 100000;
+        };
     }
 
     function send() {
-        const to = document.getElementById('target').value;
-        const text = document.getElementById('m-text').value;
-        const type = document.getElementById('msg-type').value;
-        if(!to || !text) return;
-        socket.emit('send-msg', { from: me, to, msg: text, type });
-        document.getElementById('m-text').value = "";
-    }
+        const input = document.getElementById('msgInput');
+        if (input.value.trim() === "") return;
 
-    function appendMsg(data) {
-        const box = document.getElementById('msg-box');
-        const div = document.createElement('div');
-        div.className = "msg " + (data.sender === me ? "my" : "");
-        div.innerHTML = `<small style="color:#888; font-size:10px">${data.sender}</small><div>${data.text || data.msg}</div>`;
-        box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
-    }
-
-    socket.on('new-msg', (data) => {
-        appendMsg(data);
-        if (data.sender !== me) {
-            document.getElementById('notifSound').play().catch(() => {});
-            const oldT = document.title;
-            document.title = "🔔 Новое сообщение!";
-            setTimeout(() => document.title = oldT, 3000);
-        }
-    });
-
-    function initPeer() {
-        peer = new Peer(me, { config: {'iceServers': [{ url: 'stun:stun1.l.google.com:19302' }]} });
-        peer.on('call', async call => {
-            if(confirm("Звонит " + call.peer + ". Ответить?")) {
-                const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-                call.answer(stream);
-                call.on('stream', s => document.getElementById('remoteAudio').srcObject = s);
-            }
-        });
-    }
-
-    async function makeCall() {
-        const to = document.getElementById('target').value;
-        const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-        const call = peer.call(to, stream);
-        call.on('stream', s => document.getElementById('remoteAudio').srcObject = s);
+        const packet = { name: myName, text: input.value };
+        ws.send(JSON.stringify(packet));
+        input.value = "";
     }
 </script>
 </body>
