@@ -1,32 +1,32 @@
 const WebSocket = require('ws');
 
-// Railway сам подставит PORT, а если нет — будет 8080
+// Railway выдает порт автоматически через process.env.PORT
 const port = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port });
 
+console.log(`Сервер запущен на порту ${port}`);
+
 wss.on('connection', (ws) => {
-    console.log('Новое подключение! Бабайка не прошла.');
+    console.log('Кто-то подключился к MarkGram!');
 
     ws.on('message', (message) => {
         try {
-            // Распаковываем JSON-пакет
+            // Распаковываем JSON пакет
             const packet = JSON.parse(message);
-            
-            // Добавляем время к пакету
-            packet.time = new Date().toLocaleTimeString();
+            console.log(`Получен пакет от ${packet.name}`);
 
-            // Превращаем обратно в строку и шлем ВСЕМ
-            const outgoingJSON = JSON.stringify(packet);
-            
-            wss.clients.forEach(client => {
+            // Рассылаем этот же пакет всем клиентам
+            const broadcastData = JSON.stringify(packet);
+            wss.clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
-                    client.send(outgoingJSON);
+                    client.send(broadcastData);
                 }
             });
         } catch (e) {
-            console.log("Ошибка в пакете: Не JSON!");
+            console.log("Ошибка: Пришел кривой пакет, игнорируем.");
         }
     });
+
+    ws.on('close', () => console.log('Клиент ушел.'));
 });
 
-console.log(`Сервер MarkGram летит на порту ${port}`);
